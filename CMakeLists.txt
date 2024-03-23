@@ -1,46 +1,20 @@
-cmake_minimum_required(VERSION 2.8.3)
-project(asr_sick_lms_400)
+cmake_minimum_required(VERSION 3.8)
+project(lms400)
 
-#use c++ 11
-add_definitions(-std=gnu++0x)
+add_definitions(-std=c++17)
 
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
+find_package(ament_cmake_auto REQUIRED)
+
+ament_auto_find_build_dependencies()
+
+ament_auto_add_library(
+  ${PROJECT_NAME}_component SHARED
+  src/${PROJECT_NAME}_component.cpp
+  src/sick_lms400.cpp
 )
+rclcpp_components_register_nodes(${PROJECT_NAME}_component "LMS400")
+target_compile_options(${PROJECT_NAME}_component PUBLIC -Wall)
 
-include_directories(include 
-    ${catkin_INCLUDE_DIRS} 
-    ${CMAKE_CURRENT_BINARY_DIR}
-    )
+ament_auto_add_executable(${PROJECT_NAME} src/main.cpp)
 
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES asr_sick_lms_400)
-  
-
-
-
-add_library(asr_sick_lms_400
-    src/sick_lms400.cpp
-  )
- 
-target_link_libraries(asr_sick_lms_400
-    ${catkin_LIBRARIES}
-    ${ROS_LIBRARIES}
-)
- 
-add_dependencies(asr_sick_lms_400
-	${catkin_EXPORTED_TARGETS}
-)
-
-
-install(TARGETS asr_sick_lms_400
-ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(DIRECTORY include/${PROJECT_NAME}/
-   DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION}
-   FILES_MATCHING PATTERN ".h" 
-)
+ament_auto_package()
