@@ -43,6 +43,8 @@
 #include <unistd.h>
 // #include <sensor_msgs/LaserScan.h>
 
+// #define HAVE_GETADDRINFO true
+
 #define BUF_SIZE 1024
 
 namespace asr_sick_lms_400 {

@@ -33,12 +33,14 @@
 #include <angles/angles.h>
 #include <lms400/sick_lms400.h>
 
+#include <cassert>
+
 const int CMD_BUFFER_SIZE = 255;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor.
-asr_sick_lms_400::asr_sick_lms_400::asr_sick_lms_400(const char *host, int port,
-                                                     int debug_mode) {
+asr_sick_lms_400::asr_sick_lms_400::asr_sick_lms_400(const char * host, int port, int debug_mode)
+{
   portno_ = port;
   hostname_ = host;
   verbose_ = debug_mode;
@@ -49,44 +51,43 @@ asr_sick_lms_400::asr_sick_lms_400::asr_sick_lms_400(const char *host, int port,
 ////////////////////////////////////////////////////////////////////////////////
 // Connect to the LMS400 unit using hostname:portno
 // Returns 0 if connection was successful, -1 otherwise
-int asr_sick_lms_400::asr_sick_lms_400::Connect() {
+int asr_sick_lms_400::asr_sick_lms_400::Connect()
+{
   // Create a socket
   sockfd_ = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd_ < 0)
-    return (-1);
+  if (sockfd_ < 0) return (-1);
 
   // Get the network host entry
   memset(&serv_addr_, 0, sizeof(serv_addr_));
   serv_addr_.sin_port = htons(portno_);
   serv_addr_.sin_family = AF_INET;
 #if defined(HAVE_GETADDRINFO)
-  addr_ptr = NULL;
-  if (getaddrinfo(hostname_, NULL, NULL, &(addr_ptr))) {
+  addr_ptr_ = NULL;
+  if (getaddrinfo(hostname_, NULL, NULL, &(addr_ptr_))) {
     std::cout << "getaddrinfo() failed with error" << std::endl;
     return (-1);
   }
-  assert(addr_ptr);
-  assert(addr_ptr->ai_addr);
-  if ((addr_ptr->ai_addr->sa_family) != AF_INET) {
+  assert(addr_ptr_);
+  assert(addr_ptr_->ai_addr);
+  if ((addr_ptr_->ai_addr->sa_family) != AF_INET) {
     std::cout << "unsupported internet address family" << std::endl;
     return (-1);
   }
-  serv_addr.sin_addr.s_addr =
-      (reinterpret_cast<struct sockaddr_in *>(addr_ptr->ai_addr))
-          ->sin_addr.s_addr;
-  freeaddrinfo(addr_ptr);
-  addr_ptr = NULL;
+  serv_addr_.sin_addr.s_addr =
+    (reinterpret_cast<struct sockaddr_in *>(addr_ptr_->ai_addr))->sin_addr.s_addr;
+  freeaddrinfo(addr_ptr_);
+  addr_ptr_ = NULL;
 #else
   server_ = gethostbyname(hostname_);
-  if ((server_) == NULL)
-    return (-1);
+  if ((server_) == NULL) return (-1);
   memcpy(&(serv_addr_.sin_addr.s_addr), server_->h_addr, server_->h_length);
 #endif
 
   // Attempt to connect
-  if (connect(sockfd_, reinterpret_cast<struct sockaddr *>(&serv_addr_),
-              sizeof(serv_addr_)) < 0)
-    return (-1);
+  int res = connect(sockfd_, reinterpret_cast<struct sockaddr *>(&serv_addr_), sizeof(serv_addr_));
+  int errno_res = errno;
+  std::cout << res << ',' << errno_res << std::endl;
+  if (res < 0) return (-1);
 
   return (0);
 }
@@ -94,47 +95,43 @@ int asr_sick_lms_400::asr_sick_lms_400::Connect() {
 ////////////////////////////////////////////////////////////////////////////////
 // Disconnect from the LMS400 unit
 // Returns 0 if connection was successful, -1 otherwise
-int asr_sick_lms_400::asr_sick_lms_400::Disconnect() {
-  return (close(sockfd_));
-}
+int asr_sick_lms_400::asr_sick_lms_400::Disconnect() { return (close(sockfd_)); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Enable/Disable extended RIS (Remission Information System) detectivity
-int asr_sick_lms_400::asr_sick_lms_400::EnableRIS(int onoff) {
+int asr_sick_lms_400::asr_sick_lms_400::EnableRIS(int onoff)
+{
   char cmd[CMD_BUFFER_SIZE];
   snprintf(cmd, CMD_BUFFER_SIZE, "sWN MDblex %i", onoff);
   SendCommand(cmd);
 
-  if (ReadAnswer() != 0)
-    return (-1);
+  if (ReadAnswer() != 0) return (-1);
   ExtendedRIS_ = onoff;
   return (0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the mean filter parameters
-int asr_sick_lms_400::asr_sick_lms_400::SetMeanFilterParameters(int num_scans) {
+int asr_sick_lms_400::asr_sick_lms_400::SetMeanFilterParameters(int num_scans)
+{
   char cmd[CMD_BUFFER_SIZE];
   snprintf(cmd, CMD_BUFFER_SIZE, "sWN FLmean 0 %i", num_scans);
   SendCommand(cmd);
 
-  if (ReadAnswer() != 0)
-    return (-1);
+  if (ReadAnswer() != 0) return (-1);
   MeanFilterNumScans_ = num_scans;
   return (0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the range filter parameters
-int asr_sick_lms_400::asr_sick_lms_400::SetRangeFilterParameters(
-    float range_min, float range_max) {
+int asr_sick_lms_400::asr_sick_lms_400::SetRangeFilterParameters(float range_min, float range_max)
+{
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sWN FLrang %+f %+f", (float)range_min,
-           (float)range_max);
+  snprintf(cmd, CMD_BUFFER_SIZE, "sWN FLrang %+f %+f", (float)range_min, (float)range_max);
   SendCommand(cmd);
 
-  if (ReadAnswer() != 0)
-    return (-1);
+  if (ReadAnswer() != 0) return (-1);
   RangeFilterBottomLimit_ = range_min;
   RangeFilterTopLimit_ = range_max;
   return (0);
@@ -142,27 +139,27 @@ int asr_sick_lms_400::asr_sick_lms_400::SetRangeFilterParameters(
 
 ////////////////////////////////////////////////////////////////////////////////
 // Enable filters using a filter mask
-int asr_sick_lms_400::asr_sick_lms_400::EnableFilters(int filter_mask) {
+int asr_sick_lms_400::asr_sick_lms_400::EnableFilters(int filter_mask)
+{
   char cmd[CMD_BUFFER_SIZE];
   snprintf(cmd, CMD_BUFFER_SIZE, "sWN FLsel %+i", filter_mask);
   SendCommand(cmd);
 
-  if (ReadAnswer() != 0)
-    return (-1);
+  if (ReadAnswer() != 0) return (-1);
   FilterMask_ = filter_mask;
   return (0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Takes a string containing an ip adress and returns an array of 4 u_chars
-unsigned char *asr_sick_lms_400::asr_sick_lms_400::ParseIP(char *ip) {
-  char *tmp = (char *)malloc(strlen(ip) + 1);
-  unsigned char *_ip = (unsigned char *)malloc(4);
+unsigned char * asr_sick_lms_400::asr_sick_lms_400::ParseIP(char * ip)
+{
+  char * tmp = (char *)malloc(strlen(ip) + 1);
+  unsigned char * _ip = (unsigned char *)malloc(4);
 
   strcpy(tmp, ip);
   _ip[0] = atoi(strtok(tmp, "."));
-  for (int i = 1; i < 4; i++)
-    _ip[i] = atoi(strtok(NULL, "."));
+  for (int i = 1; i < 4; i++) _ip[i] = atoi(strtok(NULL, "."));
 
   free(tmp);
   return (_ip);
@@ -170,25 +167,24 @@ unsigned char *asr_sick_lms_400::asr_sick_lms_400::ParseIP(char *ip) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the desired userlevel by logging in with the appropriate password
-int asr_sick_lms_400::asr_sick_lms_400::SetUserLevel(int8_t userlevel,
-                                                     const char *password) {
+int asr_sick_lms_400::asr_sick_lms_400::SetUserLevel(int8_t userlevel, const char * password)
+{
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sMN SetAccessMode %d %s", userlevel,
-           password);
+  snprintf(cmd, CMD_BUFFER_SIZE, "sMN SetAccessMode %d %s", userlevel, password);
   SendCommand(cmd);
   return (ReadConfirmationAndAnswer());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Fills string pointed to by macadress with the MAC adress read from the sensor
-int asr_sick_lms_400::asr_sick_lms_400::GetMACAddress(char **macaddress) {
-  char *mac = (char *)malloc(20);
+int asr_sick_lms_400::asr_sick_lms_400::GetMACAddress(char ** macaddress)
+{
+  char * mac = (char *)malloc(20);
   int index = 0;
-  char *tmp;
+  char * tmp;
 
   SendCommand("sRN EImac ");
-  if (ReadAnswer() != 0)
-    return (-1);
+  if (ReadAnswer() != 0) return (-1);
 
   strtok((char *)buffer_, " ");
   strtok(NULL, " ");
@@ -207,13 +203,13 @@ int asr_sick_lms_400::asr_sick_lms_400::GetMACAddress(char **macaddress) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the IP address of the LMS400
-int asr_sick_lms_400::asr_sick_lms_400::SetIP(char *ip) {
-  unsigned char *ip_str;
+int asr_sick_lms_400::asr_sick_lms_400::SetIP(char * ip)
+{
+  unsigned char * ip_str;
   ip_str = ParseIP(ip);
   char cmd[80];
 
-  snprintf(cmd, 80, "sWN EIip %X %X %X %X", ip_str[0], ip_str[1], ip_str[2],
-           ip_str[3]);
+  snprintf(cmd, 80, "sWN EIip %X %X %X %X", ip_str[0], ip_str[1], ip_str[2], ip_str[3]);
   free(ip_str);
   SendCommand(cmd);
 
@@ -222,13 +218,14 @@ int asr_sick_lms_400::asr_sick_lms_400::SetIP(char *ip) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the gateway address for the Ethernet interface
-int asr_sick_lms_400::asr_sick_lms_400::SetGateway(char *gw) {
-  unsigned char *gw_str;
+int asr_sick_lms_400::asr_sick_lms_400::SetGateway(char * gw)
+{
+  unsigned char * gw_str;
   gw_str = ParseIP(gw);
   char cmd[CMD_BUFFER_SIZE];
 
-  snprintf(cmd, CMD_BUFFER_SIZE, "sWN EIgate %X %X %X %X", gw_str[0], gw_str[1],
-           gw_str[2], gw_str[3]);
+  snprintf(
+    cmd, CMD_BUFFER_SIZE, "sWN EIgate %X %X %X %X", gw_str[0], gw_str[1], gw_str[2], gw_str[3]);
   free(gw_str);
   SendCommand(cmd);
 
@@ -237,13 +234,15 @@ int asr_sick_lms_400::asr_sick_lms_400::SetGateway(char *gw) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set the subnet mask for the Ethernet interface
-int asr_sick_lms_400::asr_sick_lms_400::SetNetmask(char *mask) {
-  unsigned char *mask_str;
+int asr_sick_lms_400::asr_sick_lms_400::SetNetmask(char * mask)
+{
+  unsigned char * mask_str;
   mask_str = ParseIP(mask);
   char cmd[CMD_BUFFER_SIZE];
 
-  snprintf(cmd, CMD_BUFFER_SIZE, "sWN EImask %X %X %X %X", mask_str[0],
-           mask_str[1], mask_str[2], mask_str[3]);
+  snprintf(
+    cmd, CMD_BUFFER_SIZE, "sWN EImask %X %X %X %X", mask_str[0], mask_str[1], mask_str[2],
+    mask_str[3]);
   free(mask_str);
   SendCommand(cmd);
 
@@ -252,7 +251,8 @@ int asr_sick_lms_400::asr_sick_lms_400::SetNetmask(char *mask) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Set port for TCP/IP communication
-int asr_sick_lms_400::asr_sick_lms_400::SetPort(uint16_t port) {
+int asr_sick_lms_400::asr_sick_lms_400::SetPort(uint16_t port)
+{
   char cmd[CMD_BUFFER_SIZE];
 
   snprintf(cmd, CMD_BUFFER_SIZE, "sWN EIport %04X", port);
@@ -263,8 +263,9 @@ int asr_sick_lms_400::asr_sick_lms_400::SetPort(uint16_t port) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Reset the LMS400 unit
-int asr_sick_lms_400::asr_sick_lms_400::ResetDevice() {
-  const char *cmd = "sMN mDCreset ";
+int asr_sick_lms_400::asr_sick_lms_400::ResetDevice()
+{
+  const char * cmd = "sMN mDCreset ";
   SendCommand(cmd);
 
   return (ReadAnswer());
@@ -272,8 +273,9 @@ int asr_sick_lms_400::asr_sick_lms_400::ResetDevice() {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Terminate configuration and change back to userlevel 0
-int asr_sick_lms_400::asr_sick_lms_400::TerminateConfiguration() {
-  const char *cmd = "sMN Run";
+int asr_sick_lms_400::asr_sick_lms_400::TerminateConfiguration()
+{
+  const char * cmd = "sMN Run";
   SendCommand(cmd);
 
   return (ReadConfirmationAndAnswer());
@@ -282,10 +284,12 @@ int asr_sick_lms_400::asr_sick_lms_400::TerminateConfiguration() {
 ////////////////////////////////////////////////////////////////////////////////
 // Set the laser angular resolution. Requires userlevel 2. Unused for now.
 int asr_sick_lms_400::asr_sick_lms_400::SetAngularResolution(
-    const char *password, float ang_res, float angle_start, float angle_range) {
+  const char * password, float ang_res, float angle_start, float angle_range)
+{
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sMN mSCconfigbyang 04 %s %+f 01 %+f %+f",
-           password, ang_res, angle_start, angle_range);
+  snprintf(
+    cmd, CMD_BUFFER_SIZE, "sMN mSCconfigbyang 04 %s %+f 01 %+f %+f", password, ang_res, angle_start,
+    angle_range);
   SendCommand(cmd);
 
   return (ReadConfirmationAndAnswer());
@@ -294,10 +298,12 @@ int asr_sick_lms_400::asr_sick_lms_400::SetAngularResolution(
 ////////////////////////////////////////////////////////////////////////////////
 // Set the laser scanning frequency. Requires userlevel 2. Unused for now.
 int asr_sick_lms_400::asr_sick_lms_400::SetScanningFrequency(
-    const char *password, float freq, float angle_start, float angle_range) {
+  const char * password, float freq, float angle_start, float angle_range)
+{
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sMN mSCconfigbyfreq 04 %s %+f 01 %+f %+f",
-           password, freq, angle_start, angle_range);
+  snprintf(
+    cmd, CMD_BUFFER_SIZE, "sMN mSCconfigbyfreq 04 %s %+f 01 %+f %+f", password, freq, angle_start,
+    angle_range);
   SendCommand(cmd);
 
   return (ReadConfirmationAndAnswer());
@@ -306,10 +312,12 @@ int asr_sick_lms_400::asr_sick_lms_400::SetScanningFrequency(
 ////////////////////////////////////////////////////////////////////////////////
 // Set both resolution and frequency without going to a higher user level (?)
 int asr_sick_lms_400::asr_sick_lms_400::SetResolutionAndFrequency(
-    float freq, float ang_res, float angle_start, float angle_range) {
+  float freq, float ang_res, float angle_start, float angle_range)
+{
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sMN mSCsetscanconfig %+.2f %+.2f %+.2f %+.2f",
-           freq, ang_res, angle_start, angle_range);
+  snprintf(
+    cmd, CMD_BUFFER_SIZE, "sMN mSCsetscanconfig %+.2f %+.2f %+.2f %+.2f", freq, ang_res,
+    angle_start, angle_range);
   SendCommand(cmd);
 
   int error = ReadConfirmationAndAnswer();
@@ -323,14 +331,13 @@ int asr_sick_lms_400::asr_sick_lms_400::SetResolutionAndFrequency(
     long int re = strtol(strtok(NULL, " "), NULL, 16);
 
     if ((ErrorCode != 0) && (verbose_ > 0))
-      printf(">> Warning: got an error code %d\n", ErrorCode);
+      std::cout << ">> Warning: got an error code " << ErrorCode << std::endl;
 
     scanning_frequency_ = sf;
     resolution_ = re;
 
     if (verbose_ > 0)
-      printf(">> Measured value quality is: %ld [5-10]\n",
-             strtol(strtok(NULL, " "), NULL, 16));
+      printf(">> Measured value quality is: %ld [5-10]\n", strtol(strtok(NULL, " "), NULL, 16));
   }
 
   return (error);
@@ -338,7 +345,8 @@ int asr_sick_lms_400::asr_sick_lms_400::SetResolutionAndFrequency(
 
 ////////////////////////////////////////////////////////////////////////////////
 // Start a measurement for both distance and intensity or just distance.
-int asr_sick_lms_400::asr_sick_lms_400::StartMeasurement(bool intensity) {
+int asr_sick_lms_400::asr_sick_lms_400::StartMeasurement(bool intensity)
+{
   char cmd[CMD_BUFFER_SIZE];
   if (intensity)
     snprintf(cmd, CMD_BUFFER_SIZE, "sMN mLRreqdata %x", 0x20);
@@ -352,8 +360,8 @@ int asr_sick_lms_400::asr_sick_lms_400::StartMeasurement(bool intensity) {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Read a measurement
-sensor_msgs::msg::LaserScan
-asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
+sensor_msgs::msg::LaserScan asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement()
+{
   sensor_msgs::msg::LaserScan scan;
 
   char cs_read = 0, cs_calc = 0;
@@ -362,32 +370,26 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
 
   memset(buffer_, 0, 256);
   if (!MeasurementQueue_->empty()) {
-    if (verbose_ > 0)
-      std::cout << ">>> Reading from queue..." << std::endl;
-    memcpy(buffer_, (char *)MeasurementQueue_->front().string,
-           MeasurementQueue_->front().length + 1);
+    if (verbose_ > 0) std::cout << ">>> Reading from queue..." << std::endl;
+    memcpy(
+      buffer_, (char *)MeasurementQueue_->front().string, MeasurementQueue_->front().length + 1);
     free(MeasurementQueue_->front().string);
     MeasurementQueue_->erase(MeasurementQueue_->begin());
   } else {
-    if (verbose_ == 2)
-      std::cout << ">>> Queue empty. Reading from socket..." << std::endl;
+    if (verbose_ == 2) std::cout << ">>> Queue empty. Reading from socket..." << std::endl;
     n_ = read(sockfd_, buffer_, 8);
     if (n_ < 0) {
-      if (verbose_ > 0)
-        std::cout << ">>> E: error reading from socket!" << std::endl;
+      if (verbose_ > 0) std::cout << ">>> E: error reading from socket!" << std::endl;
       return (scan);
     }
-    if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 ||
-        buffer_[3] != 0x02) {
-      if (verbose_ > 0)
-        std::cout << ">>> E: error expected 4 bytes STX's!" << std::endl;
+    if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 || buffer_[3] != 0x02) {
+      if (verbose_ > 0) std::cout << ">>> E: error expected 4 bytes STX's!" << std::endl;
       n_ = read(sockfd_, buffer_, 255);
       return (scan);
     }
 
     // find message length
-    length = ((buffer_[4] << 24) | (buffer_[5] << 16) | (buffer_[6] << 8) |
-              (buffer_[7]));
+    length = ((buffer_[4] << 24) | (buffer_[5] << 16) | (buffer_[6] << 8) | (buffer_[7]));
     do {
       n_ = read(sockfd_, &buffer_[current], length - current);
       current += n_;
@@ -400,8 +402,7 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
       return (scan);
     }
 
-    for (int i = 0; i < length; i++)
-      cs_calc ^= buffer_[i];
+    for (int i = 0; i < length; i++) cs_calc ^= buffer_[i];
 
     if (cs_calc != cs_read) {
       if (verbose_ > 0)
@@ -416,16 +417,13 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
 
   float min_angle = meas_header.StartingAngle / 10000.0;
   float resolution = meas_header.AngularStepWidth / 10000.0;
-  float max_angle =
-      ((float)meas_header.NumberMeasuredValues) * resolution + min_angle;
+  float max_angle = ((float)meas_header.NumberMeasuredValues) * resolution + min_angle;
   // float scanning_frequency = meas_header.ScanningFrequency;
 
   if (verbose_ == 2)
-    std::cout << ">>> Reading " << meas_header.NumberMeasuredValues
-              << "values from " << meas_header.StartingAngle / 10000.0 << " to "
-              << ((float)meas_header.NumberMeasuredValues) * resolution +
-                     min_angle
-              << std::endl;
+    std::cout << ">>> Reading " << meas_header.NumberMeasuredValues << "values from "
+              << meas_header.StartingAngle / 10000.0 << " to "
+              << ((float)meas_header.NumberMeasuredValues) * resolution + min_angle << std::endl;
 
   uint16_t distance = 0;
   uint8_t remission = 0;
@@ -440,10 +438,9 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
   scan.ranges.resize(meas_header.NumberMeasuredValues);
   scan.intensities.resize(meas_header.NumberMeasuredValues);
 
-  memcpy(&scan.scan_time,
-         &buffer_[sizeof(MeasurementHeader_t) +
-                  meas_header.NumberMeasuredValues * 3 + 14],
-         2);
+  memcpy(
+    &scan.scan_time,
+    &buffer_[sizeof(MeasurementHeader_t) + meas_header.NumberMeasuredValues * 3 + 14], 2);
 
   // Parse the read buffer and copy values into our distance/intensity buffer
   for (int i = 0; i < meas_header.NumberMeasuredValues; i++) {
@@ -459,10 +456,8 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
     scan.intensities[i] = remission * meas_header.RemissionScaling;
 
     if (verbose_ == 2)
-      std::cout << " >>> [" << i
-                << "] dist: " << distance * meas_header.DistanceScaling
-                << "\t remission: " << remission * meas_header.RemissionScaling
-                << std::endl;
+      std::cout << " >>> [" << i << "] dist: " << distance * meas_header.DistanceScaling
+                << "\t remission: " << remission * meas_header.RemissionScaling << std::endl;
   }
 
   scan.header.frame_id = "lms400_tilt_laser";
@@ -473,7 +468,8 @@ asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement() {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Stop a measurement
-int asr_sick_lms_400::asr_sick_lms_400::StopMeasurement() {
+int asr_sick_lms_400::asr_sick_lms_400::StopMeasurement()
+{
   char cmd[CMD_BUFFER_SIZE];
   snprintf(cmd, CMD_BUFFER_SIZE, "sMN mLRstopdata");
   SendCommand(cmd);
@@ -483,28 +479,26 @@ int asr_sick_lms_400::asr_sick_lms_400::StopMeasurement() {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Send a command to the laser unit. Returns -1 on error.
-int asr_sick_lms_400::asr_sick_lms_400::SendCommand(const char *cmd) {
-  if (verbose_ > 0)
-    std::cout << ">> Sent: " << cmd << std::endl;
+int asr_sick_lms_400::asr_sick_lms_400::SendCommand(const char * cmd)
+{
+  if (verbose_ > 0) std::cout << ">> Sent: " << cmd << std::endl;
   AssembleCommand((unsigned char *)cmd, strlen(cmd));
 
   n_ = write(sockfd_, command_, commandlength_);
-  if (n_ < 0)
-    return (-1);
+  if (n_ < 0) return (-1);
 
   return (0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Read a result from the laser unit.
-int asr_sick_lms_400::asr_sick_lms_400::ReadResult() {
+int asr_sick_lms_400::asr_sick_lms_400::ReadResult()
+{
   memset(buffer_, 0, 256);
   n_ = read(sockfd_, buffer_, 8);
-  if (n_ < 0)
-    return (-1);
+  if (n_ < 0) return (-1);
 
-  if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 ||
-      buffer_[3] != 0x02) {
+  if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 || buffer_[3] != 0x02) {
     if (verbose_ > 0)
       // ROS_WARN ("> E: expected 4 bytes STX's!");
       n_ = read(sockfd_, buffer_, 255);
@@ -512,8 +506,7 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult() {
   }
 
   // Find message length
-  int length = ((buffer_[4] << 24) | (buffer_[5] << 16) | (buffer_[6] << 8) |
-                (buffer_[7]));
+  int length = ((buffer_[4] << 24) | (buffer_[5] << 16) | (buffer_[6] << 8) | (buffer_[7]));
   int current = 0;
   do {
     n_ = read(sockfd_, &buffer_[current], length - current);
@@ -521,14 +514,12 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult() {
   } while (current < length);
 
   bufferlength_ = length;
-  if ((verbose_ > 0) && (buffer_[0] != 0x20))
-    std::cout << ">> Received: " << buffer_ << std::endl;
+  if ((verbose_ > 0) && (buffer_[0] != 0x20)) std::cout << ">> Received: " << buffer_ << std::endl;
 
   // Check for error
   if (strncmp((const char *)buffer_, "sFA", 3) == 0) {
     strtok((char *)buffer_, " ");
-    std::cout << ">> E: Got an error message with code 0x" << strtok(NULL, " ")
-              << std::endl;
+    std::cout << ">> E: Got an error message with code 0x" << strtok(NULL, " ") << std::endl;
   }
 
   // Read checksum:
@@ -545,12 +536,11 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult() {
     return (ReadResult());
   else if (bufferlength_ > sizeof(MeasurementHeader_t)) {
     if (verbose_ > 0)
-      std::cout
-          << ">>>> ReadResult: probably found a data packet!\n>>>>          "
-             "   "
-          << buffer_ << std::endl;
+      std::cout << ">>>> ReadResult: probably found a data packet!\n>>>>          "
+                   "   "
+                << buffer_ << std::endl;
     // Don't throw away our precious measurement, queue it for later use :)
-    unsigned char *tmp = (unsigned char *)malloc(bufferlength_ + 1);
+    unsigned char * tmp = (unsigned char *)malloc(bufferlength_ + 1);
     memcpy(tmp, buffer_, bufferlength_ + 1);
     MeasurementQueueElement_t q;
     q.string = tmp;
@@ -569,7 +559,8 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadAnswer() { return (ReadResult()); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Read a confirmation and an answer from the laser unit
-int asr_sick_lms_400::asr_sick_lms_400::ReadConfirmationAndAnswer() {
+int asr_sick_lms_400::asr_sick_lms_400::ReadConfirmationAndAnswer()
+{
   ReadResult();
   if (buffer_[0] == 's' && buffer_[1] == 'F' && buffer_[2] == 'A')
     return (-1);
@@ -579,16 +570,16 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadConfirmationAndAnswer() {
 
 ////////////////////////////////////////////////////////////////////////////////
 // adds a header and the checksum to the command to be sent
-int asr_sick_lms_400::asr_sick_lms_400::AssembleCommand(unsigned char *cmd,
-                                                        int len) {
+int asr_sick_lms_400::asr_sick_lms_400::AssembleCommand(unsigned char * cmd, int len)
+{
   unsigned char checksum = 0;
   int index = 0;
 
-  command_[0] = 0x02; // Messages start with 4 STX's
+  command_[0] = 0x02;  // Messages start with 4 STX's
   command_[1] = 0x02;
   command_[2] = 0x02;
   command_[3] = 0x02;
-  command_[4] = (len >> 24) & 0xff; // then message length
+  command_[4] = (len >> 24) & 0xff;  // then message length
   command_[5] = (len >> 16) & 0xff;
   command_[6] = (len >> 8) & 0xff;
   command_[7] = (len)&0xff;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cerrno>
 #include <chrono>
 #include <geometry_msgs/msg/point.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -33,7 +34,7 @@ private:
 
   // Password for changing to userlevel 3 (service)
   bool loggedin_;
-  int debug_;
+  int debug_ = 1;
 
   asr_sick_lms_400::asr_sick_lms_400 lms_;
 
@@ -50,8 +51,8 @@ public:
   {
     using namespace std::chrono_literals;
     // connection settings
-    hostname_ = this->declare_parameter<std::string>("hostname", "192.168.0.1");
-    password_ = this->declare_parameter<std::string>("password", "00000000");
+    hostname_ = this->declare_parameter<std::string>("hostname", "192.168.0.100");
+    password_ = this->declare_parameter<std::string>("password", "client");
     port_ = this->declare_parameter<int>("port", 2111);
 
     // filter settings
@@ -73,17 +74,17 @@ public:
 
     loggedin_ = false;
 
-    if(start() != 0){
+    if (start() != 0) {
       return;
     }
 
     lms_.StartMeasurement(intensity_);
 
     main_timer_ = this->create_wall_timer(1ms, [this]() {
-      if(this->laser_enabled_){
+      if (this->laser_enabled_) {
         sensor_msgs::msg::LaserScan msg;
         msg = lms_.ReadMeasurement();
-        msg.header.frame_id = "laser"; // ?
+        msg.header.frame_id = "laser";  // ?
         msg.header.stamp = this->get_clock()->now();
         if (msg.ranges.size() != 0) {
           scan_pub_->publish(msg);
