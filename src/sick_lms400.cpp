@@ -39,7 +39,9 @@ const int CMD_BUFFER_SIZE = 255;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor.
-asr_sick_lms_400::asr_sick_lms_400::asr_sick_lms_400(const char * host, int port, int debug_mode)
+asr_sick_lms_400::asr_sick_lms_400::asr_sick_lms_400(
+  rclcpp::Node * node, const char * host, int port, int debug_mode)
+: node_(node)
 {
   portno_ = port;
   hostname_ = host;
@@ -85,8 +87,6 @@ int asr_sick_lms_400::asr_sick_lms_400::Connect()
 
   // Attempt to connect
   int res = connect(sockfd_, reinterpret_cast<struct sockaddr *>(&serv_addr_), sizeof(serv_addr_));
-  int errno_res = errno;
-  std::cout << res << ',' << errno_res << std::endl;
   if (res < 0) return (-1);
 
   return (0);
@@ -103,6 +103,7 @@ int asr_sick_lms_400::asr_sick_lms_400::EnableRIS(int onoff)
 {
   char cmd[CMD_BUFFER_SIZE];
   snprintf(cmd, CMD_BUFFER_SIZE, "sWN MDblex %i", onoff);
+
   SendCommand(cmd);
 
   if (ReadAnswer() != 0) return (-1);
@@ -170,7 +171,7 @@ unsigned char * asr_sick_lms_400::asr_sick_lms_400::ParseIP(char * ip)
 int asr_sick_lms_400::asr_sick_lms_400::SetUserLevel(int8_t userlevel, const char * password)
 {
   char cmd[CMD_BUFFER_SIZE];
-  snprintf(cmd, CMD_BUFFER_SIZE, "sMN SetAccessMode %d %s", userlevel, password);
+  snprintf(cmd, CMD_BUFFER_SIZE, "sMN SetAccessMode %02d %s", userlevel, password);
   SendCommand(cmd);
   return (ReadConfirmationAndAnswer());
 }
@@ -331,13 +332,15 @@ int asr_sick_lms_400::asr_sick_lms_400::SetResolutionAndFrequency(
     long int re = strtol(strtok(NULL, " "), NULL, 16);
 
     if ((ErrorCode != 0) && (verbose_ > 0))
-      std::cout << ">> Warning: got an error code " << ErrorCode << std::endl;
+      RCLCPP_ERROR(node_->get_logger(), ">> Warning: got an error code %d", ErrorCode);
 
     scanning_frequency_ = sf;
     resolution_ = re;
 
     if (verbose_ > 0)
-      printf(">> Measured value quality is: %ld [5-10]\n", strtol(strtok(NULL, " "), NULL, 16));
+      RCLCPP_ERROR(
+        node_->get_logger(), ">> Measured value quality is: %ld [5-10]",
+        strtol(strtok(NULL, " "), NULL, 16));
   }
 
   return (error);
@@ -370,20 +373,20 @@ sensor_msgs::msg::LaserScan asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement(
 
   memset(buffer_, 0, 256);
   if (!MeasurementQueue_->empty()) {
-    if (verbose_ > 0) std::cout << ">>> Reading from queue..." << std::endl;
+    if (verbose_ > 0) RCLCPP_INFO(node_->get_logger(), ">>> Reading from queue...");
     memcpy(
       buffer_, (char *)MeasurementQueue_->front().string, MeasurementQueue_->front().length + 1);
     free(MeasurementQueue_->front().string);
     MeasurementQueue_->erase(MeasurementQueue_->begin());
   } else {
-    if (verbose_ == 2) std::cout << ">>> Queue empty. Reading from socket..." << std::endl;
+    if (verbose_ == 2) RCLCPP_INFO(node_->get_logger(), ">>> Queue empty. Reading from socket...");
     n_ = read(sockfd_, buffer_, 8);
     if (n_ < 0) {
-      if (verbose_ > 0) std::cout << ">>> E: error reading from socket!" << std::endl;
+      if (verbose_ > 0) RCLCPP_ERROR(node_->get_logger(), ">>> E: error reading from socket!");
       return (scan);
     }
     if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 || buffer_[3] != 0x02) {
-      if (verbose_ > 0) std::cout << ">>> E: error expected 4 bytes STX's!" << std::endl;
+      if (verbose_ > 0) RCLCPP_ERROR(node_->get_logger(), ">>> E: error expected 4 bytes STX's!");
       n_ = read(sockfd_, buffer_, 255);
       return (scan);
     }
@@ -398,16 +401,15 @@ sensor_msgs::msg::LaserScan asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement(
     // read checksum:
     int ret = read(sockfd_, &cs_read, 1);
     if (ret < 1) {
-      std::cout << "LMS400 didnt get any data in read" << ret << std::endl;
+      RCLCPP_ERROR(node_->get_logger(), "LMS400 didnt get any data in read");
       return (scan);
     }
 
     for (int i = 0; i < length; i++) cs_calc ^= buffer_[i];
 
     if (cs_calc != cs_read) {
-      if (verbose_ > 0)
-        // ROS_WARN (">>> E: checksums do not match!\n");
-        return (scan);
+      if (verbose_ > 0) RCLCPP_WARN(node_->get_logger(), ">>> E: checksums do not match!\n");
+      return (scan);
     }
   }
 
@@ -421,9 +423,10 @@ sensor_msgs::msg::LaserScan asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement(
   // float scanning_frequency = meas_header.ScanningFrequency;
 
   if (verbose_ == 2)
-    std::cout << ">>> Reading " << meas_header.NumberMeasuredValues << "values from "
-              << meas_header.StartingAngle / 10000.0 << " to "
-              << ((float)meas_header.NumberMeasuredValues) * resolution + min_angle << std::endl;
+    RCLCPP_INFO(
+      node_->get_logger(), ">>> Reading %d values from %f to %f", meas_header.NumberMeasuredValues,
+      meas_header.StartingAngle / 10000.0,
+      ((float)meas_header.NumberMeasuredValues) * resolution + min_angle);
 
   uint16_t distance = 0;
   uint8_t remission = 0;
@@ -456,8 +459,9 @@ sensor_msgs::msg::LaserScan asr_sick_lms_400::asr_sick_lms_400::ReadMeasurement(
     scan.intensities[i] = remission * meas_header.RemissionScaling;
 
     if (verbose_ == 2)
-      std::cout << " >>> [" << i << "] dist: " << distance * meas_header.DistanceScaling
-                << "\t remission: " << remission * meas_header.RemissionScaling << std::endl;
+      RCLCPP_INFO(
+        node_->get_logger(), ">>> [%i] dist: %i\t remission: %i", i,
+        distance * meas_header.DistanceScaling, remission * meas_header.RemissionScaling);
   }
 
   scan.header.frame_id = "lms400_tilt_laser";
@@ -481,7 +485,7 @@ int asr_sick_lms_400::asr_sick_lms_400::StopMeasurement()
 // Send a command to the laser unit. Returns -1 on error.
 int asr_sick_lms_400::asr_sick_lms_400::SendCommand(const char * cmd)
 {
-  if (verbose_ > 0) std::cout << ">> Sent: " << cmd << std::endl;
+  if (verbose_ > 0) RCLCPP_INFO(node_->get_logger(), ">> Sent: \"%s\"", cmd);
   AssembleCommand((unsigned char *)cmd, strlen(cmd));
 
   n_ = write(sockfd_, command_, commandlength_);
@@ -499,9 +503,8 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult()
   if (n_ < 0) return (-1);
 
   if (buffer_[0] != 0x02 || buffer_[1] != 0x02 || buffer_[2] != 0x02 || buffer_[3] != 0x02) {
-    if (verbose_ > 0)
-      // ROS_WARN ("> E: expected 4 bytes STX's!");
-      n_ = read(sockfd_, buffer_, 255);
+    if (verbose_ > 0) RCLCPP_ERROR(node_->get_logger(), ">> E: expected 4 bytes STX's!");
+    n_ = read(sockfd_, buffer_, 255);
     return (-1);
   }
 
@@ -514,19 +517,21 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult()
   } while (current < length);
 
   bufferlength_ = length;
-  if ((verbose_ > 0) && (buffer_[0] != 0x20)) std::cout << ">> Received: " << buffer_ << std::endl;
+  if ((verbose_ > 0) && (buffer_[0] != 0x20))
+    RCLCPP_INFO(node_->get_logger(), ">> Received: \"%s\"\n", buffer_);
 
   // Check for error
   if (strncmp((const char *)buffer_, "sFA", 3) == 0) {
-    strtok((char *)buffer_, " ");
-    std::cout << ">> E: Got an error message with code 0x" << strtok(NULL, " ") << std::endl;
+    char* token = strtok((char *)buffer_, " ");
+    RCLCPP_ERROR(
+      node_->get_logger(), ">> E: Got an error message with code 0x%x", token[1]);
   }
 
   // Read checksum:
   char cs_read = 0;
   int ret = read(sockfd_, &cs_read, 1);
   if (ret < 1) {
-    std::cout << "LMS400 didnt get any data in read " << ret << std::endl;
+    RCLCPP_ERROR(node_->get_logger(), "LMS400 didnt get any data in read %d", ret);
     return (-1);
   }
 
@@ -536,9 +541,9 @@ int asr_sick_lms_400::asr_sick_lms_400::ReadResult()
     return (ReadResult());
   else if (bufferlength_ > sizeof(MeasurementHeader_t)) {
     if (verbose_ > 0)
-      std::cout << ">>>> ReadResult: probably found a data packet!\n>>>>          "
-                   "   "
-                << buffer_ << std::endl;
+      RCLCPP_INFO(
+        node_->get_logger(),
+        ">>>> ReadResult: probably found a data packet!\n>>>>             %s", buffer_);
     // Don't throw away our precious measurement, queue it for later use :)
     unsigned char * tmp = (unsigned char *)malloc(bufferlength_ + 1);
     memcpy(tmp, buffer_, bufferlength_ + 1);

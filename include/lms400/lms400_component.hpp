@@ -52,7 +52,7 @@ public:
     using namespace std::chrono_literals;
     // connection settings
     hostname_ = this->declare_parameter<std::string>("hostname", "192.168.0.100");
-    password_ = this->declare_parameter<std::string>("password", "client");
+    password_ = this->declare_parameter<std::string>("password", "81BE23AA");
     port_ = this->declare_parameter<int>("port", 2111);
 
     // filter settings
@@ -102,7 +102,7 @@ public:
    */
   int start()
   {
-    lms_ = asr_sick_lms_400::asr_sick_lms_400(hostname_.c_str(), port_, debug_);
+    lms_ = asr_sick_lms_400::asr_sick_lms_400(this, hostname_.c_str(), port_, debug_);
 
     // check lms connection
     if (lms_.Connect() != 0) {

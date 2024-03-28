@@ -30,32 +30,33 @@
  *
  */
 
-// #include <ros/ros.h>
-#include <cstring>
-#include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sensor_msgs/msg/laser_scan.hpp>
 #include <stdlib.h>
 #include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-// #include <sensor_msgs/LaserScan.h>
 
-// #define HAVE_GETADDRINFO true
+#include <cstring>
+#include <iostream>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 
 #define BUF_SIZE 1024
 
-namespace asr_sick_lms_400 {
+namespace asr_sick_lms_400
+{
 ////////////////////////////////////////////////////////////////////////////////
-typedef struct {
-  unsigned char *string;
+typedef struct
+{
+  unsigned char * string;
   int length;
 } MeasurementQueueElement_t;
 
 ////////////////////////////////////////////////////////////////////////////////
-typedef struct {
+typedef struct
+{
   uint16_t Format;
   uint16_t DistanceScaling;
   int32_t StartingAngle;
@@ -68,39 +69,38 @@ typedef struct {
 } MeasurementHeader_t;
 
 ////////////////////////////////////////////////////////////////////////////////
-class asr_sick_lms_400 {
+class asr_sick_lms_400
+{
 public:
   asr_sick_lms_400() {}
-  asr_sick_lms_400(const char *host, int port, int debug_mode);
+  asr_sick_lms_400(rclcpp::Node * node, const char * host, int port, int debug_mode);
 
   // Creates socket, connects
   int Connect();
   int Disconnect();
 
   // Configuration parameters
-  int SetAngularResolution(const char *password, float ang_res,
-                           float angle_start, float angle_range);
-  int SetScanningFrequency(const char *password, float freq, float angle_start,
-                           float angle_range);
-  int SetResolutionAndFrequency(float freq, float ang_res, float angle_start,
-                                float angle_range);
+  int SetAngularResolution(
+    const char * password, float ang_res, float angle_start, float angle_range);
+  int SetScanningFrequency(const char * password, float freq, float angle_start, float angle_range);
+  int SetResolutionAndFrequency(float freq, float ang_res, float angle_start, float angle_range);
 
   int StartMeasurement(bool intensity = true);
   sensor_msgs::msg::LaserScan ReadMeasurement();
   int StopMeasurement();
 
-  int SetUserLevel(int8_t userlevel, const char *password);
-  int GetMACAddress(char **macadress);
+  int SetUserLevel(int8_t userlevel, const char * password);
+  int GetMACAddress(char ** macadress);
 
-  int SetIP(char *ip);
-  int SetGateway(char *gw);
-  int SetNetmask(char *mask);
+  int SetIP(char * ip);
+  int SetGateway(char * gw);
+  int SetNetmask(char * mask);
   int SetPort(uint16_t port);
 
   int ResetDevice();
   int TerminateConfiguration();
 
-  int SendCommand(const char *cmd);
+  int SendCommand(const char * cmd);
   int ReadResult();
   // for "Variables", Commands that only reply with one Answer message
   int ReadAnswer();
@@ -114,19 +114,22 @@ public:
   int EnableFilters(int filter_mask);
 
   // turns a string holding an ip address into long
-  unsigned char *ParseIP(char *ip);
+  unsigned char * ParseIP(char * ip);
 
 private:
-  // assembles STX's, length field, message, checksum ready to be sent. Cool.
-  int AssembleCommand(unsigned char *command, int len);
+  // node ptr for log
+  const rclcpp::Node * node_;
 
-  const char *hostname_;
+  // assembles STX's, length field, message, checksum ready to be sent. Cool.
+  int AssembleCommand(unsigned char * command, int len);
+
+  const char * hostname_;
   int sockfd_, portno_, n_;
   struct sockaddr_in serv_addr_;
 #if HAVE_GETADDRINFO
-  struct addrinfo *addr_ptr_;
+  struct addrinfo * addr_ptr_;
 #else
-  struct hostent *server_;
+  struct hostent * server_;
 #endif
 
   // Internal Parameters:
@@ -146,6 +149,6 @@ private:
   // for sending:
   unsigned char command_[BUF_SIZE];
   int commandlength_;
-  std::vector<MeasurementQueueElement_t> *MeasurementQueue_;
+  std::vector<MeasurementQueueElement_t> * MeasurementQueue_;
 };
-} // namespace asr_sick_lms_400
+}  // namespace asr_sick_lms_400
